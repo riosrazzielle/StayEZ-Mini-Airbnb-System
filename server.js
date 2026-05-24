@@ -1,9 +1,9 @@
 // Load environment variables FIRST — before anything else
 require('dotenv').config();
 
-const express  = require('express');
+const express = require('express');
 const mongoose = require('mongoose');
-const cors     = require('cors');
+const cors = require('cors');
 
 // ─── Initialize Express App ───────────────────────────────────────────────────
 const app = express();
@@ -21,10 +21,11 @@ mongoose
     process.exit(1); // Exit if DB connection fails — nothing works without it
   });
 
-// ─── Routes (add here as you build them) ─────────────────────────────────────
-// Example:
-// const listingRoutes = require('./routes/listings');
-// app.use('/api/listings', listingRoutes);
+// ─── Routes ───────────────────────────────────────────────────────────────────
+const listingRoutes = require('./routes/listings');
+
+// This tells Express: "Any request starting with /api/listings should be handled by listingRoutes"
+app.use('/api/listings', listingRoutes);
 
 // ─── Root Health-Check Endpoint ───────────────────────────────────────────────
 app.get('/', (req, res) => {
