@@ -36,3 +36,16 @@ router.post('/login', async (req, res) => {
 });
 
 module.exports = router;
+
+// ─── GET: Fetch All Users (Admins Only) ───────────────────────────────────────
+const checkRole = require('../middleware/roleCheck'); // Make sure to import your bouncer!
+
+router.get('/users', checkRole(['Admin']), async (req, res) => {
+    try {
+        // .select('-password') ensures we don't accidentally send passwords back!
+        const users = await User.find().select('-password');
+        res.status(200).json(users);
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching users', error: error.message });
+    }
+});
