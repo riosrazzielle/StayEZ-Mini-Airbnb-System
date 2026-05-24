@@ -1,18 +1,20 @@
-// This middleware expects the user's role to be sent in the request headers
+// This middleware reads role and userId from request headers
 const checkRole = (requiredRoles) => {
     return (req, res, next) => {
-        // Frontend will send the role in the headers for simplicity in this mini-project
         const userRole = req.headers['user-role'];
+        const userId   = req.headers['user-id'];
 
         if (!userRole) {
-            return res.status(401).json({ message: 'Access denied: No role provided' });
+            return res.status(401).json({ message: 'Access denied: No role provided. Please log in.' });
         }
 
         if (!requiredRoles.includes(userRole)) {
-            return res.status(403).json({ message: 'Access denied: You do not have permission' });
+            return res.status(403).json({ message: `Access denied: ${userRole}s cannot perform this action` });
         }
 
-        // If they have the right role, let them proceed to the route
+        // Attach to req so all routes can scope queries to the logged-in user
+        req.userId   = userId;
+        req.userRole = userRole;
         next();
     };
 };

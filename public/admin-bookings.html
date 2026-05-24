@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StayEZ — All Bookings (Admin)</title>
+    <meta name="description" content="Administrator view of every booking in the StayEZ system.">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav id="main-nav"></nav>
+
+<div class="page-container">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">All <span>Bookings</span></h1>
+            <p style="color:var(--text-secondary); margin-top:4px;">Administrator — system-wide booking overview</p>
+        </div>
+        <button onclick="loadBookings()" class="btn btn-outline">↻ Refresh</button>
+    </div>
+
+    <!-- Stats Grid -->
+    <div id="stats-grid" class="stats-grid"></div>
+
+    <!-- Status Filter -->
+    <div class="filter-bar" style="margin-bottom:20px;">
+        <label style="color:var(--text-secondary); font-size:0.875rem; font-weight:600; white-space:nowrap;">Filter by status:</label>
+        <select id="status-filter" class="form-select" style="flex:1; max-width:220px;">
+            <option value="">All Statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+        </select>
+    </div>
+
+    <div id="bookings-container">
+        <div class="loading"><div class="spinner"></div><span>Loading all bookings…</span></div>
+    </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+    const user = requireAuth(['Admin']);
+    let allBookings = [];
+
+    if (user) { renderNav('/admin-bookings.html'); loadBookings(); }
+
+    async function loadBookings() {
+        document.getElementById('bookings-container').innerHTML =
+            '<div class="loading"><div class="spinner"></div><span>Loading…</span></div>';
+        try {
+            allBookings = await api('GET', '/bookings');
+            renderStats(allBookings);
+            renderBookings(allBookings);
+        } catch (err) {
+            document.getElementById('bookings-container').innerHTML =
+                `<div class="empty-state"><div class="empty-state-icon">⚠️</div><h3>${err.message}</h3></div>`;
+        }
+    }
+
+    function renderStats(bookings) {
+        const counts = {
+            total:    bookings.length,
+            pending:  bookings.filter(b => b.status === 'pending').length,
+            approved: bookings.filter(b => b.status === 'approved').length,
+            rejected: bookings.filter(b => b.status === 'rejected').length,
+        };
+
+        document.getElementById('stats-grid').innerHTML = [
+            { label: 'Total Bookings', val: counts.total,    color: 'var(--accent-1)' },
+            { label: 'Pending',        val: counts.pending,  color: 'var(--warning)'  },
+            { label: 'Approved',       val: counts.approved, color: 'var(--success)'  },
+            { label: 'Rejected',       val: counts.rejected, color: 'var(--danger)'   },
+        ].map(s => `
+            <div class="stat-card">
+                <div class="stat-num" style="color:${s.color};">${s.val}</div>
+                <div class="stat-label">${s.label}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderBookings(bookings) {
+        const container = document.getElementById('bookings-container');
+        if (!bookings.length) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📭</div>
+                    <h3>No bookings found</h3>
+                    <p>Bookings will appear here once guests start making reservations.</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Listing</th>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Guest</th>
+                            <th>Email</th>
+                            <th>Check-in</th>
+                            <th>Check-out</th>
+                            <th>Status</th>
+                            <th>Booked On</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${bookings.map(b => `
+                            <tr>
+                                <td><strong>${b.listingId ? b.listingId.name     : '—'}</strong></td>
+                                <td>${b.listingId ? `<span class="listing-type-badge inline">${b.listingId.type}</span>` : '—'}</td>
+                                <td style="color:var(--text-secondary);">${b.listingId ? b.listingId.location : '—'}</td>
+                                <td>${b.guestId ? b.guestId.name  : 'N/A'}</td>
+                                <td style="color:var(--text-secondary);">${b.guestId ? b.guestId.email : '—'}</td>
+                                <td>${formatDate(b.startDate)}</td>
+                                <td>${formatDate(b.endDate)}</td>
+                                <td>${statusBadge(b.status)}</td>
+                                <td style="color:var(--text-muted); font-size:0.8rem;">${formatDate(b.createdAt)}</td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>`;
+    }
+
+    // Status filter
+    document.getElementById('status-filter').addEventListener('change', function () {
+        const val      = this.value;
+        const filtered = val ? allBookings.filter(b => b.status === val) : allBookings;
+        renderBookings(filtered);
+    });
+</script>
+</body>
+</html>

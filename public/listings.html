@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StayEZ — Browse Listings</title>
+    <meta name="description" content="Browse hotels, apartments, dorms, and guest rooms on StayEZ. Search, filter, and sort to find your perfect stay.">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav id="main-nav"></nav>
+
+<div class="page-container">
+    <!-- Hero -->
+    <div style="text-align:center; padding: 36px 0 28px;">
+        <h1 class="page-title">Find Your Perfect <span>Stay</span></h1>
+        <p style="color:var(--text-secondary); margin-top:10px; font-size:1rem;">
+            Search hotels, apartments, dorms &amp; more across the Philippines
+        </p>
+    </div>
+
+    <!-- Search / Filter / Sort Bar -->
+    <div class="filter-bar">
+        <input type="text" id="search" class="form-input" placeholder="🔍 Search by name…" id="search-input">
+        <input type="text" id="filter-location" class="form-input" placeholder="📍 Location…">
+        <select id="filter-type" class="form-select">
+            <option value="">All Types</option>
+            <option value="hotel">Hotel</option>
+            <option value="apartment">Apartment</option>
+            <option value="dorm">Dorm</option>
+            <option value="guest_room">Guest Room</option>
+        </select>
+        <select id="sort-price" class="form-select">
+            <option value="">Sort by Price</option>
+            <option value="price_asc">Price: Low → High</option>
+            <option value="price_desc">Price: High → Low</option>
+        </select>
+        <button id="search-btn" class="btn btn-primary">Search</button>
+        <button id="clear-btn"  class="btn btn-outline">Clear</button>
+    </div>
+
+    <div id="results-info" style="color:var(--text-secondary); font-size:0.875rem; margin-bottom:4px;"></div>
+    <div id="listings-grid" class="listing-grid">
+        <div class="loading"><div class="spinner"></div><span>Loading listings…</span></div>
+    </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+    const user    = getUser();
+    const isGuest = user && user.role === 'Guest';
+    renderNav('/listings.html');
+
+    async function fetchListings() {
+        const search   = document.getElementById('search').value.trim();
+        const location = document.getElementById('filter-location').value.trim();
+        const type     = document.getElementById('filter-type').value;
+        const sort     = document.getElementById('sort-price').value;
+
+        const params = new URLSearchParams();
+        if (search)   params.append('search',   search);
+        if (location) params.append('location', location);
+        if (type)     params.append('type',     type);
+        if (sort)     params.append('sort',     sort);
+
+        document.getElementById('listings-grid').innerHTML =
+            '<div class="loading"><div class="spinner"></div><span>Searching…</span></div>';
+
+        try {
+            const listings = await api('GET', '/listings?' + params.toString());
+            renderListings(listings);
+        } catch (err) {
+            showToast(err.message, 'error');
+            document.getElementById('listings-grid').innerHTML =
+                '<div class="empty-state"><div class="empty-state-icon">⚠️</div><h3>Failed to load listings</h3></div>';
+        }
+    }
+
+    function renderListings(listings) {
+        const info = document.getElementById('results-info');
+        const grid = document.getElementById('listings-grid');
+
+        info.textContent = `${listings.length} listing${listings.length !== 1 ? 's' : ''} found`;
+
+        if (!listings.length) {
+            grid.innerHTML = `
+                <div class="empty-state" style="grid-column:1/-1;">
+                    <div class="empty-state-icon">🔍</div>
+                    <h3>No listings found</h3>
+                    <p>Try adjusting your search or filters</p>
+                </div>`;
+            return;
+        }
+        grid.innerHTML = listings.map(l => listingCard(l, isGuest)).join('');
+    }
+
+    // Event wiring
+    document.getElementById('search-btn').addEventListener('click', fetchListings);
+    document.getElementById('clear-btn').addEventListener('click', () => {
+        document.getElementById('search').value          = '';
+        document.getElementById('filter-location').value = '';
+        document.getElementById('filter-type').value     = '';
+        document.getElementById('sort-price').value      = '';
+        fetchListings();
+    });
+    ['search', 'filter-location'].forEach(id =>
+        document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') fetchListings(); })
+    );
+    document.getElementById('filter-type').addEventListener('change',  fetchListings);
+    document.getElementById('sort-price').addEventListener('change',   fetchListings);
+
+    // Initial load
+    fetchListings();
+</script>
+</body>
+</html>

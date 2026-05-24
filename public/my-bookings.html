@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StayEZ — My Bookings</title>
+    <meta name="description" content="View and track your booking statuses on StayEZ.">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav id="main-nav"></nav>
+
+<div class="page-container">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">My <span>Bookings</span></h1>
+            <p style="color:var(--text-secondary); margin-top:4px;">
+                Track your reservations — host contact revealed on approval
+            </p>
+        </div>
+        <a href="/listings.html" class="btn btn-primary">+ New Booking</a>
+    </div>
+
+    <div id="bookings-container">
+        <div class="loading"><div class="spinner"></div><span>Loading your bookings…</span></div>
+    </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+    const user = requireAuth(['Guest']);
+    if (user) { renderNav('/my-bookings.html'); loadBookings(); }
+
+    async function loadBookings() {
+        try {
+            const bookings = await api('GET', '/bookings/mine');
+            renderBookings(bookings);
+        } catch (err) {
+            document.getElementById('bookings-container').innerHTML =
+                `<div class="empty-state"><div class="empty-state-icon">⚠️</div><h3>${err.message}</h3></div>`;
+        }
+    }
+
+    function renderBookings(bookings) {
+        const container = document.getElementById('bookings-container');
+
+        if (!bookings.length) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">📅</div>
+                    <h3>No bookings yet</h3>
+                    <p>Browse listings and book your first stay!</p>
+                    <a href="/listings.html" class="btn btn-primary" style="margin-top:20px">Browse Listings</a>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = `<div style="display:grid; gap:16px;">` +
+            bookings.map(b => {
+                const l           = b.listingId;
+                const name        = l ? l.name     : 'Listing Removed';
+                const location    = l ? l.location : '';
+                const imgSrc      = l && l.image ? l.image : 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=200';
+                const isApproved  = b.status === 'approved';
+
+                const contactHtml = isApproved && l && l.contactNumber
+                    ? `<div class="contact-box revealed">
+                           <div style="font-size:0.78rem; color:var(--success); font-weight:700; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">
+                               📞 Host Contact
+                           </div>
+                           <div style="font-size:1.05rem; font-weight:700;">${l.contactNumber}</div>
+                       </div>`
+                    : `<div class="contact-box hidden">
+                           <span style="font-size:0.82rem; color:var(--text-muted);">
+                               🔒 Host contact number will be revealed once your booking is approved
+                           </span>
+                       </div>`;
+
+                return `
+                    <div class="card" style="display:grid; grid-template-columns:90px 1fr; gap:20px; padding:20px; cursor:default;">
+                        <img src="${imgSrc}"
+                             onerror="this.src='https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=200'"
+                             alt="${name}"
+                             style="width:90px; height:90px; object-fit:cover; border-radius:var(--radius-sm); flex-shrink:0;">
+                        <div>
+                            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin-bottom:6px;">
+                                <h3 style="font-size:1rem; font-weight:700;">${name}</h3>
+                                ${statusBadge(b.status)}
+                            </div>
+                            ${location ? `<p style="color:var(--text-secondary); font-size:0.82rem; margin-bottom:6px;">📍 ${location}</p>` : ''}
+                            <p style="font-size:0.82rem; color:var(--text-secondary);">
+                                📅 ${formatDate(b.startDate)} &rarr; ${formatDate(b.endDate)}
+                            </p>
+                            ${contactHtml}
+                        </div>
+                    </div>`;
+            }).join('') + `</div>`;
+    }
+</script>
+</body>
+</html>

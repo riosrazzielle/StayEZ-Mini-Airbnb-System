@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StayEZ — Manage Listings (Admin)</title>
+    <meta name="description" content="Administrator view of all listings on StayEZ. Search, filter, and delete any listing.">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav id="main-nav"></nav>
+
+<div class="page-container">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">Manage <span>Listings</span></h1>
+            <p style="color:var(--text-secondary); margin-top:4px;">Administrator — view and delete any listing</p>
+        </div>
+    </div>
+
+    <div class="filter-bar">
+        <input type="text" id="search"          class="form-input" placeholder="🔍 Search by name…">
+        <input type="text" id="filter-location" class="form-input" placeholder="📍 Filter by location…">
+        <select id="filter-type" class="form-select">
+            <option value="">All Types</option>
+            <option value="hotel">Hotel</option>
+            <option value="apartment">Apartment</option>
+            <option value="dorm">Dorm</option>
+            <option value="guest_room">Guest Room</option>
+        </select>
+        <select id="sort-price" class="form-select">
+            <option value="">Sort by Price</option>
+            <option value="price_asc">Price: Low → High</option>
+            <option value="price_desc">Price: High → Low</option>
+        </select>
+        <button id="search-btn" class="btn btn-primary">Search</button>
+        <button id="clear-btn"  class="btn btn-outline">Clear</button>
+    </div>
+
+    <div id="count" style="color:var(--text-secondary); font-size:0.875rem; margin-bottom:12px;"></div>
+
+    <div id="listings-container">
+        <div class="loading"><div class="spinner"></div><span>Loading all listings…</span></div>
+    </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+    const user = requireAuth(['Admin']);
+    if (user) { renderNav('/admin-listings.html'); fetchListings(); }
+
+    async function fetchListings() {
+        const search   = document.getElementById('search').value.trim();
+        const location = document.getElementById('filter-location').value.trim();
+        const type     = document.getElementById('filter-type').value;
+        const sort     = document.getElementById('sort-price').value;
+
+        const params = new URLSearchParams();
+        if (search)   params.append('search',   search);
+        if (location) params.append('location', location);
+        if (type)     params.append('type',     type);
+        if (sort)     params.append('sort',     sort);
+
+        document.getElementById('listings-container').innerHTML =
+            '<div class="loading"><div class="spinner"></div><span>Loading…</span></div>';
+
+        try {
+            const listings = await api('GET', '/listings?' + params);
+            document.getElementById('count').textContent =
+                `${listings.length} listing${listings.length !== 1 ? 's' : ''} found`;
+            renderListings(listings);
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    }
+
+    function renderListings(listings) {
+        const c = document.getElementById('listings-container');
+        if (!listings.length) {
+            c.innerHTML = '<div class="empty-state"><div class="empty-state-icon">🏠</div><h3>No listings found</h3></div>';
+            return;
+        }
+
+        c.innerHTML = `
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Preview</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Location</th>
+                            <th>Price / Night</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${listings.map(l => `
+                            <tr>
+                                <td>
+                                    <img src="${l.image || ''}"
+                                         onerror="this.src='https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=80'"
+                                         style="width:52px; height:52px; object-fit:cover; border-radius:var(--radius-sm);">
+                                </td>
+                                <td><strong>${l.name}</strong></td>
+                                <td><span class="listing-type-badge inline">${l.type}</span></td>
+                                <td style="color:var(--text-secondary);">📍 ${l.location}</td>
+                                <td style="color:var(--accent-2); font-weight:700;">₱${Number(l.price).toLocaleString()}</td>
+                                <td>
+                                    <button onclick="deleteListing('${l._id}')" class="btn btn-danger btn-sm">Delete</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>`;
+    }
+
+    async function deleteListing(id) {
+        if (!confirm('Permanently delete this listing? This cannot be undone.')) return;
+        try {
+            await api('DELETE', '/listings/' + id);
+            showToast('Listing deleted.', 'success');
+            fetchListings();
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    }
+
+    // Event wiring
+    document.getElementById('search-btn').addEventListener('click', fetchListings);
+    document.getElementById('clear-btn').addEventListener('click', () => {
+        document.getElementById('search').value          = '';
+        document.getElementById('filter-location').value = '';
+        document.getElementById('filter-type').value     = '';
+        document.getElementById('sort-price').value      = '';
+        fetchListings();
+    });
+    document.getElementById('filter-type').addEventListener('change',  fetchListings);
+    document.getElementById('sort-price').addEventListener('change',   fetchListings);
+    ['search', 'filter-location'].forEach(id =>
+        document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') fetchListings(); })
+    );
+</script>
+</body>
+</html>

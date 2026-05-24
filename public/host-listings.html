@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StayEZ — My Listings</title>
+    <meta name="description" content="Manage your property listings on StayEZ as a host.">
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<nav id="main-nav"></nav>
+
+<!-- ─ Create / Edit Listing Modal ─────────────────────────────────────────── -->
+<div class="modal-overlay" id="listing-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <h2 class="modal-title" id="modal-title">Create New Listing</h2>
+            <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <form id="listing-form" novalidate>
+            <input type="hidden" id="listing-id">
+            <div class="form-group">
+                <label class="form-label" for="f-name">Property Name</label>
+                <input type="text" id="f-name" class="form-input" placeholder="e.g. Cozy Beachside Studio" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label class="form-label" for="f-type">Type</label>
+                    <select id="f-type" class="form-select" required>
+                        <option value="" disabled selected>Select type</option>
+                        <option value="hotel">Hotel</option>
+                        <option value="apartment">Apartment</option>
+                        <option value="dorm">Dorm</option>
+                        <option value="guest_room">Guest Room</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="f-price">Price / Night (₱)</label>
+                    <input type="number" id="f-price" class="form-input" placeholder="e.g. 1500" min="0" step="1" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="f-location">Location</label>
+                <input type="text" id="f-location" class="form-input" placeholder="e.g. Makati City, Metro Manila" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="f-description">Description</label>
+                <textarea id="f-description" class="form-textarea" placeholder="Describe your property…" required></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="f-image">Image URL <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+                <input type="url" id="f-image" class="form-input" placeholder="https://…">
+            </div>
+            <div class="form-group">
+                <label class="form-label" for="f-contact">Contact Number</label>
+                <input type="tel" id="f-contact" class="form-input" placeholder="09XX-XXX-XXXX" required>
+            </div>
+            <div id="modal-error" class="error-box"></div>
+            <div style="display:flex; gap:10px;">
+                <button type="button" onclick="closeModal()" class="btn btn-outline" style="flex:1">Cancel</button>
+                <button type="submit" id="modal-submit" class="btn btn-primary" style="flex:2">Create Listing</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="page-container">
+    <div class="page-header">
+        <div>
+            <h1 class="page-title">My <span>Listings</span></h1>
+            <p style="color:var(--text-secondary); margin-top:4px;">Create and manage your properties</p>
+        </div>
+        <button onclick="openCreateModal()" class="btn btn-primary">+ Add Listing</button>
+    </div>
+
+    <div id="listings-container">
+        <div class="loading"><div class="spinner"></div><span>Loading your listings…</span></div>
+    </div>
+</div>
+
+<script src="/app.js"></script>
+<script>
+    const user = requireAuth(['Host']);
+    let editingId = null;
+
+    if (user) { renderNav('/host-listings.html'); loadListings(); }
+
+    /* ─ Load & Render ─────────────────────────────────────────────────────── */
+    async function loadListings() {
+        try {
+            const listings = await api('GET', '/listings/host');
+            renderListings(listings);
+        } catch (err) {
+            document.getElementById('listings-container').innerHTML =
+                `<div class="empty-state"><div class="empty-state-icon">⚠️</div><h3>${err.message}</h3></div>`;
+        }
+    }
+
+    function renderListings(listings) {
+        const c = document.getElementById('listings-container');
+        if (!listings.length) {
+            c.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">🏡</div>
+                    <h3>No listings yet</h3>
+                    <p>Create your first property to start accepting bookings.</p>
+                    <button onclick="openCreateModal()" class="btn btn-primary" style="margin-top:20px">+ Add Listing</button>
+                </div>`;
+            return;
+        }
+
+        c.innerHTML = `<div class="listing-grid">` +
+            listings.map(l => {
+                const price  = l.price ? `₱${Number(l.price).toLocaleString()}` : '—';
+                const imgSrc = l.image || 'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=500';
+                return `
+                    <div class="listing-card">
+                        <div class="listing-img-wrap">
+                            <img src="${imgSrc}"
+                                 onerror="this.src='https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=500'"
+                                 alt="${l.name}" loading="lazy">
+                            <span class="listing-type-badge">${l.type}</span>
+                        </div>
+                        <div class="listing-info">
+                            <h3 class="listing-name">${l.name}</h3>
+                            <p class="listing-location">📍 ${l.location}</p>
+                            <p class="listing-desc">${l.description}</p>
+                            <div class="listing-footer">
+                                <span class="listing-price">${price}<small>/night</small></span>
+                                <div class="listing-actions">
+                                    <a href="/host-bookings.html?listing=${l._id}" class="btn btn-outline btn-sm">Requests</a>
+                                    <button onclick='openEditModal(${JSON.stringify(l).replace(/'/g,"&#39;")})' class="btn btn-outline btn-sm">Edit</button>
+                                    <button onclick="deleteListing('${l._id}')" class="btn btn-danger btn-sm">Delete</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+            }).join('') + `</div>`;
+    }
+
+    /* ─ Modal helpers ──────────────────────────────────────────────────────── */
+    function openCreateModal() {
+        editingId = null;
+        document.getElementById('modal-title').textContent  = 'Create New Listing';
+        document.getElementById('modal-submit').textContent = 'Create Listing';
+        document.getElementById('listing-form').reset();
+        document.getElementById('modal-error').style.display = 'none';
+        document.getElementById('listing-modal').classList.add('open');
+    }
+
+    function openEditModal(listing) {
+        editingId = listing._id;
+        document.getElementById('modal-title').textContent  = 'Edit Listing';
+        document.getElementById('modal-submit').textContent = 'Save Changes';
+        document.getElementById('f-name').value        = listing.name;
+        document.getElementById('f-type').value        = listing.type;
+        document.getElementById('f-price').value       = listing.price;
+        document.getElementById('f-location').value    = listing.location;
+        document.getElementById('f-description').value = listing.description;
+        document.getElementById('f-image').value       = listing.image || '';
+        document.getElementById('f-contact').value     = listing.contactNumber;
+        document.getElementById('modal-error').style.display = 'none';
+        document.getElementById('listing-modal').classList.add('open');
+    }
+
+    function closeModal() {
+        document.getElementById('listing-modal').classList.remove('open');
+    }
+
+    // Close on backdrop click
+    document.getElementById('listing-modal').addEventListener('click', e => {
+        if (e.target === document.getElementById('listing-modal')) closeModal();
+    });
+
+    /* ─ Form submit (create or edit) ──────────────────────────────────────── */
+    document.getElementById('listing-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn   = document.getElementById('modal-submit');
+        const errEl = document.getElementById('modal-error');
+
+        errEl.style.display = 'none';
+        btn.disabled    = true;
+        btn.textContent = 'Saving…';
+
+        const data = {
+            name:          document.getElementById('f-name').value.trim(),
+            type:          document.getElementById('f-type').value,
+            price:         parseFloat(document.getElementById('f-price').value),
+            location:      document.getElementById('f-location').value.trim(),
+            description:   document.getElementById('f-description').value.trim(),
+            image:         document.getElementById('f-image').value.trim() ||
+                           'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600',
+            contactNumber: document.getElementById('f-contact').value.trim(),
+        };
+
+        try {
+            if (editingId) {
+                await api('PUT', '/listings/' + editingId, data);
+                showToast('Listing updated!', 'success');
+            } else {
+                await api('POST', '/listings', data);
+                showToast('Listing created!', 'success');
+            }
+            closeModal();
+            loadListings();
+        } catch (err) {
+            errEl.textContent   = err.message;
+            errEl.style.display = 'block';
+        } finally {
+            btn.disabled    = false;
+            btn.textContent = editingId ? 'Save Changes' : 'Create Listing';
+        }
+    });
+
+    /* ─ Delete ─────────────────────────────────────────────────────────────── */
+    async function deleteListing(id) {
+        if (!confirm('Delete this listing? This cannot be undone.')) return;
+        try {
+            await api('DELETE', '/listings/' + id);
+            showToast('Listing deleted.', 'success');
+            loadListings();
+        } catch (err) {
+            showToast(err.message, 'error');
+        }
+    }
+</script>
+</body>
+</html>

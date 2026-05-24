@@ -1,54 +1,94 @@
-const express = require('express');
-const router = express.Router();
-const Listing = require('../models/Listing');
-const checkRole = require('../middleware/roleCheck'); // 1. Import the middleware
+const express   = require('express');
+const router    = express.Router();
+const Listing   = require('../models/Listing');
+const checkRole = require('../middleware/roleCheck');
 
-// ─── POST: Create a New Listing (Hosts Only) ──────────────────────────────────
-// 2. Drop the middleware right before the async function
-router.post('/', checkRole(['Host']), async (req, res) => {
+// ─── GET /api/listings/host ─── Host sees their own listings ─────────────────
+// MUST be defined BEFORE /:id to prevent "host" being parsed as a MongoDB ID
+router.get('/host', checkRole(['Host']), async (req, res) => {
     try {
-        const newListing = new Listing(req.body);
-        const savedListing = await newListing.save();
-        res.status(201).json(savedListing);
-    } catch (error) {
-        res.status(400).json({ message: 'Error creating listing', error: error.message });
+        const listings = await Listing.find({ hostId: req.userId });
+        res.status(200).json(listings);
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching your listings.', error: err.message });
     }
 });
 
-// ─── GET: Fetch All Listings (Public / All Roles) ─────────────────────────────
-// No middleware here because Guests need to see listings before logging in
+// ─── GET /api/listings ─── Public: search by name, filter by location/type, sort by price ──
 router.get('/', async (req, res) => {
     try {
-        const listings = await Listing.find();
+        const { search, location, type, sort } = req.query;
+        const query = {};
+
+        if (search)   query.name     = { $regex: search,   $options: 'i' };
+        if (location) query.location = { $regex: location, $options: 'i' };
+        if (type)     query.type     = { $regex: type,     $options: 'i' };
+
+        const sortOption =
+            sort === 'price_asc'  ? { price:  1 } :
+            sort === 'price_desc' ? { price: -1 } : {};
+
+        const listings = await Listing.find(query).sort(sortOption);
         res.status(200).json(listings);
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching listings', error: error.message });
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching listings.', error: err.message });
     }
 });
 
-// ─── PUT: Update an Existing Listing (Hosts Only) ─────────────────────────────
+// ─── POST /api/listings ─── Hosts create a listing ───────────────────────────
+router.post('/', checkRole(['Host']), async (req, res) => {
+    try {
+        // hostId is taken from the auth header — never trust the client body
+        const newListing = new Listing({ ...req.body, hostId: req.userId });
+        const saved      = await newListing.save();
+        res.status(201).json(saved);
+    } catch (err) {
+        res.status(400).json({ message: 'Error creating listing.', error: err.message });
+    }
+});
+
+// ─── GET /api/listings/:id ─── Single listing (public) ───────────────────────
+router.get('/:id', async (req, res) => {
+    try {
+        const listing = await Listing.findById(req.params.id);
+        if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+        res.status(200).json(listing);
+    } catch (err) {
+        res.status(500).json({ message: 'Error fetching listing.', error: err.message });
+    }
+});
+
+// ─── PUT /api/listings/:id ─── Hosts update their own listing ────────────────
 router.put('/:id', checkRole(['Host']), async (req, res) => {
     try {
-        const updatedListing = await Listing.findByIdAndUpdate(
-            req.params.id,
-            req.body,
-            { new: true }
-        );
-        if (!updatedListing) return res.status(404).json({ message: 'Listing not found' });
-        res.status(200).json(updatedListing);
-    } catch (error) {
-        res.status(400).json({ message: 'Error updating listing', error: error.message });
+        const listing = await Listing.findById(req.params.id);
+        if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+        if (listing.hostId.toString() !== req.userId) {
+            return res.status(403).json({ message: 'You do not own this listing.' });
+        }
+
+        const updated = await Listing.findByIdAndUpdate(req.params.id, req.body, { new: true });
+        res.status(200).json(updated);
+    } catch (err) {
+        res.status(400).json({ message: 'Error updating listing.', error: err.message });
     }
 });
 
-// ─── DELETE: Remove a Listing (Hosts and Admins) ──────────────────────────────
+// ─── DELETE /api/listings/:id ─── Hosts delete own; Admins delete any ────────
 router.delete('/:id', checkRole(['Host', 'Admin']), async (req, res) => {
     try {
-        const deletedListing = await Listing.findByIdAndDelete(req.params.id);
-        if (!deletedListing) return res.status(404).json({ message: 'Listing not found' });
-        res.status(200).json({ message: 'Listing deleted successfully' });
-    } catch (error) {
-        res.status(500).json({ message: 'Error deleting listing', error: error.message });
+        const listing = await Listing.findById(req.params.id);
+        if (!listing) return res.status(404).json({ message: 'Listing not found.' });
+
+        // Hosts may only delete their own listing
+        if (req.userRole === 'Host' && listing.hostId.toString() !== req.userId) {
+            return res.status(403).json({ message: 'You do not own this listing.' });
+        }
+
+        await Listing.findByIdAndDelete(req.params.id);
+        res.status(200).json({ message: 'Listing deleted successfully.' });
+    } catch (err) {
+        res.status(500).json({ message: 'Error deleting listing.', error: err.message });
     }
 });
 
