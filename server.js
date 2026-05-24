@@ -27,6 +27,9 @@ const listingRoutes = require('./routes/listings');
 // This tells Express: "Any request starting with /api/listings should be handled by listingRoutes"
 app.use('/api/listings', listingRoutes);
 
+const authRoutes = require('./routes/auth');
+app.use('/api/auth', authRoutes);
+
 // ─── Root Health-Check Endpoint ───────────────────────────────────────────────
 app.get('/', (req, res) => {
   res.json({ message: 'StayEZ API is running 🏠' });
