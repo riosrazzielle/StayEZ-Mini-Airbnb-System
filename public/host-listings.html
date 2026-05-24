@@ -48,8 +48,19 @@
                 <textarea id="f-description" class="form-textarea" placeholder="Describe your property…" required></textarea>
             </div>
             <div class="form-group">
-                <label class="form-label" for="f-image">Image URL <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
-                <input type="url" id="f-image" class="form-input" placeholder="https://…">
+                <label class="form-label">Property Image <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+                <div class="image-upload-zone" id="image-drag-area">
+                    <input type="file" id="f-image-file" accept="image/jpeg, image/png, image/webp" style="display: none;">
+                    <div class="upload-zone-content" id="upload-placeholder">
+                        <span class="upload-icon">📸</span>
+                        <p class="upload-text">Click or drag image to upload</p>
+                        <p class="upload-subtext">JPG, PNG or WEBP (automatically optimized)</p>
+                    </div>
+                    <div class="upload-zone-preview" id="upload-preview-container" style="display: none;">
+                        <img id="upload-preview-img" src="" alt="Property Preview">
+                        <button type="button" class="btn-remove-image" id="btn-remove-img" title="Remove image">×</button>
+                    </div>
+                </div>
             </div>
             <div class="form-group">
                 <label class="form-label" for="f-contact">Contact Number</label>
@@ -138,12 +149,133 @@
             }).join('') + `</div>`;
     }
 
+    /* ─ Image Upload Logic & State ─────────────────────────────────────────── */
+    let currentListingImage = '';
+
+    function updateImagePreview(src) {
+        const placeholder = document.getElementById('upload-placeholder');
+        const previewContainer = document.getElementById('upload-preview-container');
+        const previewImg = document.getElementById('upload-preview-img');
+        const fileInput = document.getElementById('f-image-file');
+
+        if (src) {
+            previewImg.src = src;
+            placeholder.style.display = 'none';
+            previewContainer.style.display = 'flex';
+        } else {
+            previewImg.src = '';
+            placeholder.style.display = 'flex';
+            previewContainer.style.display = 'none';
+            fileInput.value = ''; // Reset file input
+        }
+    }
+
+    function removeImage() {
+        currentListingImage = '';
+        updateImagePreview('');
+    }
+
+    async function handleImageFile(file) {
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            showToast('Please select an image file.', 'error');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                // Resize & compress image on client-side
+                const maxDim = 1000;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxDim || height > maxDim) {
+                    if (width > height) {
+                        height = Math.round((height * maxDim) / width);
+                        width = maxDim;
+                    } else {
+                        width = Math.round((width * maxDim) / height);
+                        height = maxDim;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Export as compressed jpeg base64
+                currentListingImage = canvas.toDataURL('image/jpeg', 0.8);
+                updateImagePreview(currentListingImage);
+            };
+            img.onerror = function() {
+                showToast('Failed to load image file.', 'error');
+            };
+            img.src = e.target.result;
+        };
+        reader.onerror = function() {
+            showToast('Failed to read image file.', 'error');
+        };
+        reader.readAsDataURL(file);
+    }
+
+    // Set up upload zone event listeners
+    const dragArea = document.getElementById('image-drag-area');
+    const fileInput = document.getElementById('f-image-file');
+    const removeBtn = document.getElementById('btn-remove-img');
+
+    dragArea.addEventListener('click', (e) => {
+        if (e.target.closest('#btn-remove-img')) return;
+        fileInput.click();
+    });
+
+    fileInput.addEventListener('change', (e) => {
+        if (e.target.files && e.target.files[0]) {
+            handleImageFile(e.target.files[0]);
+        }
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dragArea.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dragArea.classList.add('dragover');
+        }, false);
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+        dragArea.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dragArea.classList.remove('dragover');
+        }, false);
+    });
+
+    dragArea.addEventListener('drop', (e) => {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        if (files && files[0]) {
+            handleImageFile(files[0]);
+        }
+    }, false);
+
+    removeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        removeImage();
+    });
+
     /* ─ Modal helpers ──────────────────────────────────────────────────────── */
     function openCreateModal() {
         editingId = null;
         document.getElementById('modal-title').textContent  = 'Create New Listing';
         document.getElementById('modal-submit').textContent = 'Create Listing';
         document.getElementById('listing-form').reset();
+        currentListingImage = '';
+        updateImagePreview('');
         document.getElementById('modal-error').style.display = 'none';
         document.getElementById('listing-modal').classList.add('open');
     }
@@ -157,7 +289,8 @@
         document.getElementById('f-price').value       = listing.price;
         document.getElementById('f-location').value    = listing.location;
         document.getElementById('f-description').value = listing.description;
-        document.getElementById('f-image').value       = listing.image || '';
+        currentListingImage = listing.image || '';
+        updateImagePreview(currentListingImage);
         document.getElementById('f-contact').value     = listing.contactNumber;
         document.getElementById('modal-error').style.display = 'none';
         document.getElementById('listing-modal').classList.add('open');
@@ -188,7 +321,7 @@
             price:         parseFloat(document.getElementById('f-price').value),
             location:      document.getElementById('f-location').value.trim(),
             description:   document.getElementById('f-description').value.trim(),
-            image:         document.getElementById('f-image').value.trim() ||
+            image:         currentListingImage ||
                            'https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=600',
             contactNumber: document.getElementById('f-contact').value.trim(),
         };
